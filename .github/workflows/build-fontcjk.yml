@@ -65,6 +65,7 @@ jobs:
             -std=gnu++20 \
             -fno-lto \
             -Itracy/profiler/build \
+            -I. \
             -c tracy/profiler/build/data/FontCjk.cpp \
             -o FontCjk.cpp.o
 
