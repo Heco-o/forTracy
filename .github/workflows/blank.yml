@@ -1,0 +1,80 @@
+
+name: Build Tracy FontCjk for Android ARM64
+
+on:
+  workflow_dispatch:
+    inputs:
+      tracy_ref:
+        description: "Tracy branch, tag, or commit"
+        required: true
+        default: "master"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK r30
+        run: sdkmanager "ndk;30.0.16248370"
+
+      - name: Download Tracy
+        env:
+          TRACY_REF: ${{ inputs.tracy_ref }}
+        run: |
+          git clone https://github.com/wolfpld/tracy.git
+          git -C tracy checkout "$TRACY_REF"
+
+      - name: Build Tracy embed generator
+        run: |
+          cmake -S tracy/profiler/helpers \
+                -B tracy/helper-build \
+                -DCMAKE_BUILD_TYPE=Release
+
+          cmake --build tracy/helper-build --parallel 2
+
+      - name: Generate FontCjk.cpp
+        run: |
+          mkdir -p tracy/profiler/build/data
+
+          ./tracy/helper-build/embed \
+            FontCjk \
+            tracy/profiler/src/font/SourceHanSans-Normal.ttc \
+            tracy/profiler/build/data/FontCjk
+
+      - name: Compile for Android ARM64
+        run: |
+          NDK="$ANDROID_HOME/ndk/30.0.16248370"
+
+          CLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+
+          "$CLANG" \
+            --target=aarch64-linux-android24 \
+            -O3 \
+            -DNDEBUG \
+            -std=gnu++20 \
+            -fno-lto \
+            -Itracy/profiler/build \
+            -c tracy/profiler/build/data/FontCjk.cpp \
+            -o FontCjk.cpp.o
+
+      - name: Verify object architecture
+        run: |
+          NDK="$ANDROID_HOME/ndk/30.0.16248370"
+
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" \
+            -h FontCjk.cpp.o
+
+      - name: Upload compiled object
+        uses: actions/upload-artifact@v4
+        with:
+          name: FontCjk-Android-ARM64
+          path: FontCjk.cpp.o
